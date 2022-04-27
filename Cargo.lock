@@ -364,6 +364,7 @@ name = "league_think"
 version = "0.1.0"
 dependencies = [
  "riven",
+ "serde_json",
  "tokio",
 ]
 

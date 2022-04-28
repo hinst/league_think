@@ -1,6 +1,7 @@
 use std::env;
 
 mod store;
+mod analyze;
 
 pub fn main() {
     println!("STARTING...");
@@ -10,6 +11,8 @@ pub fn main() {
         Some(command) => {
             if command == "store" {
                 store::store();
+            } else if command == "analyze" {
+                analyze::analyze();
             } else {
                 println!("Unknown command: {}", command);
             }

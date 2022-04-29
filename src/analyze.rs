@@ -22,10 +22,29 @@ impl WinRateInfo {
             return 0.0;
         }
     }
+
+    fn format_list_of_named(list: &[(&str, &WinRateInfo)], indentation: &str) -> String {
+        let mut text = String::new();
+        for (champion_name, win_rate_info) in list {
+            text = text
+                .add(indentation)
+                .add(champion_name)
+                .add(" ")
+                .add(&format_ratio(
+                    win_rate_info.count_of_wins,
+                    win_rate_info.count_of_matches
+                ))
+                .add(" of ")
+                .add(&win_rate_info.count_of_matches.to_string());
+            text.push('\n');
+        }
+        return text;
+    }
 }
 
-const SUMMARY_LIMIT: usize = 5;
-const STATISTICAL_SIGNIFICANCE_THRESHOLD: i32 = 8;
+const SUMMARY_LIMIT: usize = 6;
+const STATISTICAL_SIGNIFICANCE_THRESHOLD: i32 = 6;
+const INDENTATION_STRING: &str = "  ";
 
 struct ChampionInfo {
     count_of_matches: i32,
@@ -45,33 +64,37 @@ impl ChampionInfo {
         text = text
             .add("count of matches: ")
             .add(&self.count_of_matches.to_string());
+        text.push('\n');
 
-        let mut enemies: Vec<(&String, &WinRateInfo)> = Vec::new();
+        let mut significant_enemies: Vec<(&str, &WinRateInfo)> = Vec::new();
         for (champion_name, win_rate_info) in &self.win_rates_vs_champions {
             if win_rate_info.count_of_matches >= STATISTICAL_SIGNIFICANCE_THRESHOLD {
-                enemies.push((&champion_name, &win_rate_info));
+                significant_enemies.push((&champion_name, &win_rate_info));
             }
         }
-        enemies.sort_by(|a, b|
+        significant_enemies.sort_by(|a, b|
             a.1.get_win_rate().partial_cmp(&b.1.get_win_rate()).unwrap()
         );
-        let enemies = enemies;
-
-        let mut easiest_enemies: Vec<(&String, &WinRateInfo)> = Vec::new();
-        for enemy in enemies.iter().rev().take(SUMMARY_LIMIT) {
-            easiest_enemies.push(*enemy);
+        let enemies = significant_enemies;
+        {
+            let mut easiest_enemies: Vec<(&str, &WinRateInfo)> = Vec::new();
+            for enemy in enemies.iter().rev().take(SUMMARY_LIMIT) {
+                easiest_enemies.push(*enemy);
+            }
+            let easiest_enemies = easiest_enemies;
+            text = text.add("easiest enemies: ").add(&easiest_enemies.len().to_string());
+            text.push('\n');
+            text = text.add(&WinRateInfo::format_list_of_named(&easiest_enemies, INDENTATION_STRING));
         }
-        let easiest_enemies = easiest_enemies;
-        for (champion_name, win_rate_info) in easiest_enemies {
-            text = text.add("\n")
-                .add(champion_name)
-                .add(" ")
-                .add(&format_ratio(
-                    win_rate_info.count_of_wins,
-                    win_rate_info.count_of_matches
-                ))
-                .add(" of ")
-                .add(&win_rate_info.count_of_matches.to_string());
+        {
+            let mut hardest_enemies: Vec<(&str, &WinRateInfo)> = Vec::new();
+            for enemy in enemies.iter().take(SUMMARY_LIMIT) {
+                hardest_enemies.push(*enemy);
+            }
+            let hardest_enemies = hardest_enemies;
+            text = text.add("worst enemies: ").add(&hardest_enemies.len().to_string());
+            text.push('\n');
+            text = text.add(&WinRateInfo::format_list_of_named(&hardest_enemies, INDENTATION_STRING));
         }
         return text;
     }
@@ -94,14 +117,16 @@ impl Analyzer {
         self.champion_infos.clear();
         let file_paths = std::fs::read_dir("./data").expect("Data directory is required");
         let mut file_count = 0;
-        for file_path in file_paths {
+        for (i, file_path) in file_paths.enumerate() {
             let file_path = file_path.expect("A valid file path is required");
             let file_content = std::fs::read_to_string(file_path.path())?;
             let match_history: riven::models::match_v5::Match = serde_json::from_str(&file_content)?;
             let moment = NaiveDateTime::from_timestamp(
                 match_history.info.game_creation / 1000,
                 (match_history.info.game_creation % 1000) as u32);
-            println!("Analyzing file {} -> {}...", file_count, moment);
+            if i % 10 == 0 {
+                println!("Analyzing file {} -> {}...", file_count, moment);
+            }
             self.add_match_history(&match_history);
             file_count += 1;
         }
@@ -142,8 +167,8 @@ impl Analyzer {
         for champion in champions {
             let (champion_name, champion_info) = champion;
             text = text
-                .add(champion_name).add(" ")
-                .add(&champion_info.get_summary_text())
+                .add(champion_name).add("\n")
+                .add(&indent_string(&champion_info.get_summary_text()))
                 .add("\n");
         }
         return text;
@@ -173,6 +198,22 @@ fn format_ratio(a: i32, b: i32) -> String {
     } else {
         return String::from("?");
     }
+}
+
+fn indent_string(text: &str) -> String {
+    let mut result = String::new();
+    let mut parts = Vec::new();
+    for part in text.split("\n") {
+        parts.push(part);
+    }
+    for (i, part) in parts.iter().enumerate() {
+        result = result.add(INDENTATION_STRING).add(part);
+        let is_last = i == parts.len() - 1;
+        if !is_last {
+            result.push('\n');
+        }
+    }
+    return result;
 }
 
 pub fn analyze() {

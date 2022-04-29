@@ -64,8 +64,16 @@ impl Analyzer {
     }
 
     fn get_summary_text(&self) -> String {
-        let mut text = String::new();
+        let mut champions: Vec<(&String, &ChampionInfo)> = Vec::new();
         for (champion_name, champion_info) in &self.champion_infos {
+            champions.push((champion_name, &champion_info));
+        }
+        champions.sort_by(|a, b|
+            a.1.count_of_matches.partial_cmp(&b.1.count_of_matches).unwrap().reverse()
+        );
+        let mut text = String::new();
+        for champion in champions {
+            let (champion_name, champion_info) = champion;
             text = text
                 .add(champion_name).add(" ")
                 .add(champion_info.count_of_matches.to_string().as_str())

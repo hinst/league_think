@@ -2,6 +2,10 @@ use chrono::NaiveDateTime;
 use std::ops::Add;
 use std::collections::HashMap;
 
+const SUMMARY_LIMIT: usize = 6;
+const STATISTICAL_SIGNIFICANCE_THRESHOLD: i32 = 6;
+const INDENTATION_STRING: &str = "  ";
+
 struct WinRateInfo {
     count_of_wins: i32,
     count_of_matches: i32,
@@ -41,10 +45,6 @@ impl WinRateInfo {
         return text;
     }
 }
-
-const SUMMARY_LIMIT: usize = 6;
-const STATISTICAL_SIGNIFICANCE_THRESHOLD: i32 = 6;
-const INDENTATION_STRING: &str = "  ";
 
 struct ChampionInfo {
     count_of_matches: i32,
@@ -117,7 +117,7 @@ impl Analyzer {
         self.champion_infos.clear();
         let file_paths = std::fs::read_dir("./data").expect("Data directory is required");
         let mut file_count = 0;
-        for (i, file_path) in file_paths.enumerate() {
+        for (i, file_path) in file_paths.enumerate().skip(250) {
             let file_path = file_path.expect("A valid file path is required");
             let file_content = std::fs::read_to_string(file_path.path())?;
             let match_history: riven::models::match_v5::Match = serde_json::from_str(&file_content)?;

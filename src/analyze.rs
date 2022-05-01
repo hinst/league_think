@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use crate::string::*;
 
 const SUMMARY_LIMIT: usize = 6;
-const STATISTICAL_SIGNIFICANCE_THRESHOLD: i32 = 3;
+const STATISTICAL_SIGNIFICANCE_THRESHOLD: i32 = 5;
 
 struct WinRateInfo {
     count_of_wins: i32,
@@ -125,14 +125,14 @@ impl ChampionInfo {
         text.push('\n');
 
         {
-            let enemies = ChampionInfo::get_significant_list(&self.win_rates_vs_champions);
-            text = text.add(&ChampionInfo::format_top_summary_list("easiest enemies", &enemies, true));
-            text = text.add(&ChampionInfo::format_top_summary_list("worst enemies", &enemies, false));
-        }
-        {
             let allies = ChampionInfo::get_significant_list(&self.win_rates_with_champions);
             text = text.add(&ChampionInfo::format_top_summary_list("best allies", &allies, true));
             text = text.add(&ChampionInfo::format_top_summary_list("worst allies", &allies, false));
+        }
+        {
+            let enemies = ChampionInfo::get_significant_list(&self.win_rates_vs_champions);
+            text = text.add(&ChampionInfo::format_top_summary_list("easiest enemies", &enemies, true));
+            text = text.add(&ChampionInfo::format_top_summary_list("worst enemies", &enemies, false));
         }
         return text;
     }
@@ -204,22 +204,21 @@ impl Analyzer {
                 let champion_info = self.champion_infos.entry(my_champion).or_insert(ChampionInfo::new());
                 champion_info.count_of_matches += 1;
 
-                let enemies = find_participants_by_team_id(&match_history.info, participant.team_id, false);
-                for enemy in enemies {
-                    let win_rate_info = champion_info.get_win_rate_vs(&enemy.champion_name);
-                    win_rate_info.add(participant.win);
-                }
-
                 let allies = find_participants_by_team_id(&match_history.info, participant.team_id, true);
                 for ally in allies {
                     let win_rate_info = champion_info.get_win_rate_with(&ally.champion_name);
+                    win_rate_info.add(participant.win);
+                }
+                let enemies = find_participants_by_team_id(&match_history.info, participant.team_id, false);
+                for enemy in enemies {
+                    let win_rate_info = champion_info.get_win_rate_vs(&enemy.champion_name);
                     win_rate_info.add(participant.win);
                 }
             }
         }
     }
 
-    fn get_summary_text(&self) -> String {
+    fn get_sorted_champions(&self) -> Vec<(&String, &ChampionInfo)> {
         let mut champions: Vec<(&String, &ChampionInfo)> = Vec::new();
         for (champion_name, champion_info) in &self.champion_infos {
             champions.push((champion_name, &champion_info));
@@ -227,6 +226,11 @@ impl Analyzer {
         champions.sort_by(|a, b|
             a.1.count_of_matches.partial_cmp(&b.1.count_of_matches).unwrap().reverse()
         );
+        return champions;
+    }
+
+    fn get_summary_text(&self) -> String {
+        let mut champions = self.get_sorted_champions();
         let mut text = String::new();
         for champion in champions {
             let (champion_name, champion_info) = champion;
@@ -236,6 +240,48 @@ impl Analyzer {
                 .add("\n");
         }
         return text;
+    }
+
+    fn get_score_summary_text(&self, allies: Vec<&str>, enemies: Vec<&str>) -> String {
+        let mut text = String::new();
+        let mut champions = self.get_sorted_champions();
+        for (champion_name, champion_info) in &champions {
+            let mut ally_count: i32 = 0;
+            let mut ally_score: f32 = 0.0;
+            for info in &champion_info.win_rates_with_champions {
+                if allies.contains(&info.0.as_str()) {
+                    ally_count += 1;
+                    ally_score += info.1.get_win_rate();
+                }
+            }
+            let mut enemy_count: i32 = 0;
+            let mut enemy_score: f32 = 0.0;
+            for info in &champion_info.win_rates_vs_champions {
+                if allies.contains(&info.0.as_str()) {
+                    enemy_count += 1;
+                    enemy_score += info.1.get_win_rate();
+                }
+            }
+            println!("{}: ally strength {}, enemy weakness {}, summary chance {}",
+                champion_name,
+                Self::format_score(ally_count, ally_score),
+                Self::format_score(enemy_count, enemy_score),
+                Self::format_score(ally_count + enemy_count, ally_score + enemy_score)
+            );
+        };
+        return text;
+    }
+
+    fn format_score(champion_count: i32, score: f32) -> String {
+        if champion_count == 0 {
+            return String::from("[?]")
+        } else {
+            let mut text = String::new();
+            text = text.add(&format_percent(score / (champion_count as f32)));
+            text = text.add(" of ");
+            text = text.add(&champion_count.to_string());
+            return text;
+        }
     }
 }
 
@@ -255,7 +301,13 @@ fn find_participants_by_team_id(info: &riven::models::match_v5::Info, team_id: r
 #[derive(clap::Parser)]
 struct CommandLineArguments {
     #[clap(short, default_value_t = 300)]
-    days: i64
+    days: i64,
+
+    #[clap(long, default_value_t = String::from(""))]
+    allies: String,
+
+    #[clap(long, default_value_t = String::from(""))]
+    enemies: String,
 }
 
 pub fn analyze() {
@@ -266,5 +318,12 @@ pub fn analyze() {
     println!("{}", args.days);
     analyzer.duration_limit = chrono::Duration::days(args.days);
     analyzer.analyze_files().unwrap();
-    println!("Champion summary:\n{}", analyzer.get_summary_text());
+
+    if args.allies.len() > 0 || args.enemies.len() > 0 {
+        let allies: Vec<&str> = args.allies.split(',').collect();
+        let enemies: Vec<&str> = args.enemies.split(',').collect();
+        println!("Champion chances:\n{}", analyzer.get_score_summary_text(allies, enemies));
+    } else {
+        println!("Champion summary:\n{}", analyzer.get_summary_text());
+    }
 }

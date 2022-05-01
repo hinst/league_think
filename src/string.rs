@@ -25,3 +25,10 @@ pub fn format_ratio(a: i32, b: i32) -> String {
         return String::from("?");
     }
 }
+
+pub fn format_percent(a: f32) -> String {
+    let percent = (a * 100.0) as i32;
+    let mut text = String::from(percent.to_string());
+    text.push('%');
+    return text;
+}

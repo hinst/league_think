@@ -1,10 +1,10 @@
 use chrono::NaiveDateTime;
 use std::ops::Add;
 use std::collections::HashMap;
+use crate::string::*;
 
 const SUMMARY_LIMIT: usize = 6;
 const STATISTICAL_SIGNIFICANCE_THRESHOLD: i32 = 6;
-const INDENTATION_STRING: &str = "  ";
 
 struct WinRateInfo {
     count_of_wins: i32,
@@ -188,38 +188,10 @@ fn find_by_team_id(info: &riven::models::match_v5::Info, team_id: riven::consts:
     return matched_participants;
 }
 
-fn format_ratio(a: i32, b: i32) -> String {
-    if b != 0 {
-        let ratio = (a as f32) / (b as f32);
-        let integer_ratio = (100.0 * ratio) as i32;
-        let mut text = String::new();
-        text = text.add(&integer_ratio.to_string()).add("%");
-        return text;
-    } else {
-        return String::from("?");
-    }
-}
-
-fn indent_string(text: &str) -> String {
-    let mut result = String::new();
-    let mut parts = Vec::new();
-    for part in text.split("\n") {
-        parts.push(part);
-    }
-    for (i, part) in parts.iter().enumerate() {
-        result = result.add(INDENTATION_STRING).add(part);
-        let is_last = i == parts.len() - 1;
-        if !is_last {
-            result.push('\n');
-        }
-    }
-    return result;
-}
-
 pub fn analyze() {
     let summoner_id = std::fs::read_to_string("./summoner-id.txt")
         .expect("summoner-id is required");
     let mut analyzer = Analyzer::new(summoner_id);
     analyzer.analyze_files().unwrap();
-    println!("Champion summary\n{}", analyzer.get_summary_text());
+    println!("Champion summary:\n{}", analyzer.get_summary_text());
 }

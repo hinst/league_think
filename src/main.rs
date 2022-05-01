@@ -2,6 +2,7 @@ use std::env;
 
 mod store;
 mod analyze;
+mod string;
 
 pub fn main() {
     println!("STARTING...");

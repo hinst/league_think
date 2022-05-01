@@ -6,6 +6,7 @@ use crate::string::*;
 
 const SUMMARY_LIMIT: usize = 6;
 const STATISTICAL_SIGNIFICANCE_THRESHOLD: i32 = 5;
+const STATISTICAL_SATURATION_THRESHOLD: i32 = 10;
 
 struct WinRateInfo {
     count_of_wins: i32,
@@ -35,6 +36,22 @@ impl WinRateInfo {
         }
     }
 
+    fn get_win_chance(&self) -> f32 {
+        if self.count_of_matches == 0 {
+            return 0.5
+        } else if self.count_of_matches < STATISTICAL_SIGNIFICANCE_THRESHOLD {
+            let mut lack = STATISTICAL_SIGNIFICANCE_THRESHOLD - self.count_of_matches;
+            let lack = if lack == 1 { 1.3 }
+                else if lack == 2 { 1.6 }
+                else { lack as f32 };
+            let win_rate = self.get_win_rate();
+            let delta = win_rate - 0.5;
+            return 0.5 + delta / lack;
+        } else {
+            return self.get_win_rate();
+        }
+    }
+
     fn format_list_of_named(list: &[(&str, &WinRateInfo)], indentation: &str) -> String {
         let mut text = String::new();
         for (champion_name, win_rate_info) in list {
@@ -42,6 +59,9 @@ impl WinRateInfo {
                 .add(indentation)
                 .add(champion_name)
                 .add(" ")
+                .add(" chance ")
+                .add(&format_percent(win_rate_info.get_win_chance()))
+                .add(" ratio ")
                 .add(&format_ratio(
                     win_rate_info.count_of_wins,
                     win_rate_info.count_of_matches
@@ -88,12 +108,10 @@ impl ChampionInfo {
     fn get_significant_list(source: &HashMap<String, WinRateInfo>) -> Vec<(&str, &WinRateInfo)> {
         let mut significant_champions: Vec<(&str, &WinRateInfo)> = Vec::new();
         for (champion_name, win_rate_info) in source {
-            if win_rate_info.count_of_matches >= STATISTICAL_SIGNIFICANCE_THRESHOLD {
-                significant_champions.push((&champion_name, &win_rate_info));
-            }
-        };
+            significant_champions.push((&champion_name, &win_rate_info));
+        }
         significant_champions.sort_by(|a, b|
-            a.1.get_win_rate().partial_cmp(&b.1.get_win_rate()).unwrap()
+            a.1.get_win_chance().partial_cmp(&b.1.get_win_chance()).unwrap()
         );
         return significant_champions;
     }
@@ -207,12 +225,16 @@ impl Analyzer {
                 let allies = find_participants_by_team_id(&match_history.info, participant.team_id, true);
                 for ally in allies {
                     let win_rate_info = champion_info.get_win_rate_with(&ally.champion_name);
-                    win_rate_info.add(participant.win);
+                    if win_rate_info.count_of_matches < STATISTICAL_SATURATION_THRESHOLD {
+                        win_rate_info.add(participant.win);
+                    }
                 }
                 let enemies = find_participants_by_team_id(&match_history.info, participant.team_id, false);
                 for enemy in enemies {
                     let win_rate_info = champion_info.get_win_rate_vs(&enemy.champion_name);
-                    win_rate_info.add(participant.win);
+                    if win_rate_info.count_of_matches < STATISTICAL_SATURATION_THRESHOLD {
+                        win_rate_info.add(participant.win);
+                    }
                 }
             }
         }

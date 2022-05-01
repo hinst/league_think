@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use crate::string::*;
 
 const SUMMARY_LIMIT: usize = 6;
-const STATISTICAL_SIGNIFICANCE_THRESHOLD: i32 = 4;
+const STATISTICAL_SIGNIFICANCE_THRESHOLD: i32 = 3;
 
 struct WinRateInfo {
     count_of_wins: i32,
@@ -17,6 +17,13 @@ impl WinRateInfo {
         return WinRateInfo {
             count_of_wins: 0,
             count_of_matches: 0
+        }
+    }
+
+    pub fn add(&mut self, win: bool) {
+        self.count_of_matches += 1;
+        if win {
+            self.count_of_wins += 1;
         }
     }
 
@@ -50,6 +57,7 @@ impl WinRateInfo {
 struct ChampionInfo {
     count_of_matches: i32,
     win_rates_vs_champions: HashMap<String, WinRateInfo>,
+    win_rates_with_champions: HashMap<String, WinRateInfo>,
 }
 
 impl ChampionInfo {
@@ -57,7 +65,56 @@ impl ChampionInfo {
         return ChampionInfo {
             count_of_matches: 0,
             win_rates_vs_champions: HashMap::new(),
+            win_rates_with_champions: HashMap::new(),
         }
+    }
+
+    pub fn get_win_rate_vs(&mut self, champion_name: &String) -> &mut WinRateInfo {
+        if !self.win_rates_vs_champions.contains_key(champion_name) {
+            let info = WinRateInfo::new();
+            self.win_rates_vs_champions.insert(champion_name.clone(), info);
+        }
+        return self.win_rates_vs_champions.get_mut(champion_name).unwrap();
+    }
+
+    pub fn get_win_rate_with(&mut self, champion_name: &String) -> &mut WinRateInfo {
+        if !self.win_rates_with_champions.contains_key(champion_name) {
+            let info = WinRateInfo::new();
+            self.win_rates_with_champions.insert(champion_name.clone(), info);
+        }
+        return self.win_rates_with_champions.get_mut(champion_name).unwrap();
+    }
+
+    fn get_significant_list(source: &HashMap<String, WinRateInfo>) -> Vec<(&str, &WinRateInfo)> {
+        let mut significant_champions: Vec<(&str, &WinRateInfo)> = Vec::new();
+        for (champion_name, win_rate_info) in source {
+            if win_rate_info.count_of_matches >= STATISTICAL_SIGNIFICANCE_THRESHOLD {
+                significant_champions.push((&champion_name, &win_rate_info));
+            }
+        };
+        significant_champions.sort_by(|a, b|
+            a.1.get_win_rate().partial_cmp(&b.1.get_win_rate()).unwrap()
+        );
+        return significant_champions;
+    }
+
+    fn format_top_summary_list(title: &str, sorted_champions: &Vec<(&str, &WinRateInfo)>, reverse: bool) -> String {
+        let mut relevant_champions: Vec<(&str, &WinRateInfo)> = Vec::new();
+        if reverse {
+            for champion in sorted_champions.iter().rev().take(SUMMARY_LIMIT) {
+                relevant_champions.push(*champion);
+            }
+        } else {
+            for champion in sorted_champions.iter().take(SUMMARY_LIMIT) {
+                relevant_champions.push(*champion);
+            }
+        }
+        let easiest_enemies = relevant_champions;
+        let mut text = String::from(title);
+        text = text.add(": ").add(&easiest_enemies.len().to_string());
+        text.push('\n');
+        text = text.add(&WinRateInfo::format_list_of_named(&easiest_enemies, INDENTATION_STRING));
+        return text;
     }
 
     pub fn get_summary_text(&self) -> String {
@@ -67,35 +124,15 @@ impl ChampionInfo {
             .add(&self.count_of_matches.to_string());
         text.push('\n');
 
-        let mut significant_enemies: Vec<(&str, &WinRateInfo)> = Vec::new();
-        for (champion_name, win_rate_info) in &self.win_rates_vs_champions {
-            if win_rate_info.count_of_matches >= STATISTICAL_SIGNIFICANCE_THRESHOLD {
-                significant_enemies.push((&champion_name, &win_rate_info));
-            }
-        }
-        significant_enemies.sort_by(|a, b|
-            a.1.get_win_rate().partial_cmp(&b.1.get_win_rate()).unwrap()
-        );
-        let enemies = significant_enemies;
         {
-            let mut easiest_enemies: Vec<(&str, &WinRateInfo)> = Vec::new();
-            for enemy in enemies.iter().rev().take(SUMMARY_LIMIT) {
-                easiest_enemies.push(*enemy);
-            }
-            let easiest_enemies = easiest_enemies;
-            text = text.add("easiest enemies: ").add(&easiest_enemies.len().to_string());
-            text.push('\n');
-            text = text.add(&WinRateInfo::format_list_of_named(&easiest_enemies, INDENTATION_STRING));
+            let enemies = ChampionInfo::get_significant_list(&self.win_rates_vs_champions);
+            text = text.add(&ChampionInfo::format_top_summary_list("easiest enemies", &enemies, true));
+            text = text.add(&ChampionInfo::format_top_summary_list("worst enemies", &enemies, false));
         }
         {
-            let mut hardest_enemies: Vec<(&str, &WinRateInfo)> = Vec::new();
-            for enemy in enemies.iter().take(SUMMARY_LIMIT) {
-                hardest_enemies.push(*enemy);
-            }
-            let hardest_enemies = hardest_enemies;
-            text = text.add("worst enemies: ").add(&hardest_enemies.len().to_string());
-            text.push('\n');
-            text = text.add(&WinRateInfo::format_list_of_named(&hardest_enemies, INDENTATION_STRING));
+            let allies = ChampionInfo::get_significant_list(&self.win_rates_with_champions);
+            text = text.add(&ChampionInfo::format_top_summary_list("best allies", &allies, true));
+            text = text.add(&ChampionInfo::format_top_summary_list("worst allies", &allies, false));
         }
         return text;
     }
@@ -137,11 +174,9 @@ impl Analyzer {
                                 println!("Duration limit reached at {}", latest_processed_date);
                                 break;
                             }
-                        }
-                        _ => {}
+                        },  _ => {}
                     }
-                }
-                _ => {}
+                },  _ => {}
             }
             let file_content = std::fs::read_to_string(file_path.path())?;
             let match_history: riven::models::match_v5::Match = serde_json::from_str(&file_content)?;
@@ -171,13 +206,14 @@ impl Analyzer {
 
                 let enemies = find_participants_by_team_id(&match_history.info, participant.team_id, false);
                 for enemy in enemies {
-                    let matchup_info = champion_info.win_rates_vs_champions
-                        .entry(enemy.champion_name.clone())
-                        .or_insert(WinRateInfo::new());
-                    matchup_info.count_of_matches += 1;
-                    if participant.win {
-                        matchup_info.count_of_wins += 1;
-                    }
+                    let win_rate_info = champion_info.get_win_rate_vs(&enemy.champion_name);
+                    win_rate_info.add(participant.win);
+                }
+
+                let allies = find_participants_by_team_id(&match_history.info, participant.team_id, true);
+                for ally in allies {
+                    let win_rate_info = champion_info.get_win_rate_with(&ally.champion_name);
+                    win_rate_info.add(participant.win);
                 }
             }
         }

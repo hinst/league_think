@@ -115,22 +115,23 @@ impl Analyzer {
 
     pub fn analyze_files(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         self.champion_infos.clear();
-        let file_paths = std::fs::read_dir("./data").expect("Data directory is required");
-        let mut file_count = 0;
-        for (i, file_path) in file_paths.enumerate().skip(250) {
-            let file_path = file_path.expect("A valid file path is required");
+        let mut files: Vec<std::fs::DirEntry> = std::fs::read_dir("./data")
+            .expect("Data directory is required")
+            .map(|file_path| file_path.expect("A valid file path is required"))
+            .collect();
+        files.sort_by(|a, b| a.file_name().cmp(&b.file_name()).reverse());
+        for (i, file_path) in files.iter().enumerate() {
             let file_content = std::fs::read_to_string(file_path.path())?;
             let match_history: riven::models::match_v5::Match = serde_json::from_str(&file_content)?;
             let moment = NaiveDateTime::from_timestamp(
                 match_history.info.game_creation / 1000,
                 (match_history.info.game_creation % 1000) as u32);
             if i % 10 == 0 {
-                println!("Analyzing file {} -> {}...", file_count, moment);
+                println!("Analyzing file {} -> {}...", i, moment);
             }
             self.add_match_history(&match_history);
-            file_count += 1;
-        }
-        println!("Analysis is now finished; there were this many files: {}", file_count);
+        };
+        println!("Analysis is now finished; there were this many files: {}", files.len());
         Ok(())
     }
 

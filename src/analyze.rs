@@ -1,10 +1,11 @@
 use chrono::NaiveDateTime;
+use clap::StructOpt;
 use std::ops::Add;
 use std::collections::HashMap;
 use crate::string::*;
 
 const SUMMARY_LIMIT: usize = 6;
-const STATISTICAL_SIGNIFICANCE_THRESHOLD: i32 = 6;
+const STATISTICAL_SIGNIFICANCE_THRESHOLD: i32 = 4;
 
 struct WinRateInfo {
     count_of_wins: i32,
@@ -101,6 +102,7 @@ impl ChampionInfo {
 }
 
 struct Analyzer {
+    duration_limit: chrono::Duration,
     summoner_id: String,
     champion_infos: HashMap<String, ChampionInfo>,
 }
@@ -108,6 +110,7 @@ struct Analyzer {
 impl Analyzer {
     pub fn new(summoner_id: String) -> Analyzer {
         return Analyzer {
+            duration_limit: chrono::Duration::days(0),
             summoner_id,
             champion_infos: HashMap::new()
         }
@@ -120,18 +123,42 @@ impl Analyzer {
             .map(|file_path| file_path.expect("A valid file path is required"))
             .collect();
         files.sort_by(|a, b| a.file_name().cmp(&b.file_name()).reverse());
+        let mut latest_chronological_date: Option<NaiveDateTime> = None;
+        let mut latest_processed_date: Option<NaiveDateTime> = None;
+        let mut count_of_processed_files = 0;
         for (i, file_path) in files.iter().enumerate() {
+            match latest_chronological_date {
+                Some(latest_chronological_date) => {
+                    match latest_processed_date {
+                        Some(latest_processed_date) => {
+                            let duration = latest_chronological_date
+                                .signed_duration_since(latest_processed_date);
+                            if duration > self.duration_limit {
+                                println!("Duration limit reached at {}", latest_processed_date);
+                                break;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                _ => {}
+            }
             let file_content = std::fs::read_to_string(file_path.path())?;
             let match_history: riven::models::match_v5::Match = serde_json::from_str(&file_content)?;
             let moment = NaiveDateTime::from_timestamp(
                 match_history.info.game_creation / 1000,
                 (match_history.info.game_creation % 1000) as u32);
+            if latest_chronological_date.is_none() {
+                latest_chronological_date = Some(moment);
+            }
+            latest_processed_date = Some(moment);
             if i % 10 == 0 {
                 println!("Analyzing file {} -> {}...", i, moment);
             }
             self.add_match_history(&match_history);
+            count_of_processed_files += 1;
         };
-        println!("Analysis is now finished; there were this many files: {}", files.len());
+        println!("Analysis complete. Total files: {}. Processed files: {}", files.len(), count_of_processed_files);
         Ok(())
     }
 
@@ -142,7 +169,7 @@ impl Analyzer {
                 let champion_info = self.champion_infos.entry(my_champion).or_insert(ChampionInfo::new());
                 champion_info.count_of_matches += 1;
 
-                let enemies = find_by_team_id(&match_history.info, participant.team_id, false);
+                let enemies = find_participants_by_team_id(&match_history.info, participant.team_id, false);
                 for enemy in enemies {
                     let matchup_info = champion_info.win_rates_vs_champions
                         .entry(enemy.champion_name.clone())
@@ -176,7 +203,7 @@ impl Analyzer {
     }
 }
 
-fn find_by_team_id(info: &riven::models::match_v5::Info, team_id: riven::consts::Team, equal: bool)
+fn find_participants_by_team_id(info: &riven::models::match_v5::Info, team_id: riven::consts::Team, equal: bool)
         -> Vec<&riven::models::match_v5::Participant> {
     let mut matched_participants = Vec::new();
     for participant in &info.participants {
@@ -189,10 +216,19 @@ fn find_by_team_id(info: &riven::models::match_v5::Info, team_id: riven::consts:
     return matched_participants;
 }
 
+#[derive(clap::Parser)]
+struct CommandLineArguments {
+    #[clap(short, default_value_t = 300)]
+    days: i64
+}
+
 pub fn analyze() {
     let summoner_id = std::fs::read_to_string("./summoner-id.txt")
         .expect("summoner-id is required");
+    let args = CommandLineArguments::parse_from(std::env::args().skip(1));
     let mut analyzer = Analyzer::new(summoner_id);
+    println!("{}", args.days);
+    analyzer.duration_limit = chrono::Duration::days(args.days);
     analyzer.analyze_files().unwrap();
     println!("Champion summary:\n{}", analyzer.get_summary_text());
 }

@@ -40,7 +40,7 @@ impl WinRateInfo {
         if self.count_of_matches == 0 {
             return 0.5
         } else if self.count_of_matches < STATISTICAL_SIGNIFICANCE_THRESHOLD {
-            let mut lack = STATISTICAL_SIGNIFICANCE_THRESHOLD - self.count_of_matches;
+            let lack = STATISTICAL_SIGNIFICANCE_THRESHOLD - self.count_of_matches;
             let lack = if lack == 1 { 1.3 }
                 else if lack == 2 { 1.6 }
                 else { lack as f32 };
@@ -252,7 +252,7 @@ impl Analyzer {
     }
 
     fn get_summary_text(&self) -> String {
-        let mut champions = self.get_sorted_champions();
+        let champions = self.get_sorted_champions();
         let mut text = String::new();
         for champion in champions {
             let (champion_name, champion_info) = champion;
@@ -266,7 +266,7 @@ impl Analyzer {
 
     fn get_score_summary_text(&self, allies: Vec<&str>, enemies: Vec<&str>) -> String {
         let mut text = String::new();
-        let mut champions = self.get_sorted_champions();
+        let champions = self.get_sorted_champions();
         for (champion_name, champion_info) in &champions {
             let mut ally_count: i32 = 0;
             let mut ally_score: f32 = 0.0;
@@ -279,16 +279,18 @@ impl Analyzer {
             let mut enemy_count: i32 = 0;
             let mut enemy_score: f32 = 0.0;
             for info in &champion_info.win_rates_vs_champions {
-                if allies.contains(&info.0.as_str()) {
+                if enemies.contains(&info.0.as_str()) {
                     enemy_count += 1;
                     enemy_score += info.1.get_win_rate();
                 }
             }
-            println!("{}: ally strength {}, enemy weakness {}, summary chance {}",
-                champion_name,
-                Self::format_score(ally_count, ally_score),
-                Self::format_score(enemy_count, enemy_score),
-                Self::format_score(ally_count + enemy_count, ally_score + enemy_score)
+            text = text.add(
+                &format!("{}: ally strength {}, enemy weakness {}, summary chance {}",
+                    champion_name,
+                    Self::format_score(ally_count, ally_score),
+                    Self::format_score(enemy_count, enemy_score),
+                    Self::format_score(ally_count + enemy_count, ally_score + enemy_score)
+                )
             );
         };
         return text;

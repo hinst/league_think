@@ -292,6 +292,7 @@ impl Analyzer {
                     Self::format_score(ally_count + enemy_count, ally_score + enemy_score)
                 )
             );
+            text.push('\n');
         };
         return text;
     }

@@ -3,7 +3,8 @@ use chrono::NaiveDateTime;
 use clap::StructOpt;
 use std::ops::Add;
 use crate::champion_info::ChampionInfo;
-use crate::string::{indent_string, format_percent};
+use crate::string::{ indent_string, format_percent, INDENTATION_STRING };
+use crate::win_rate_info::WinRateInfo;
 
 const STATISTICAL_SATURATION_THRESHOLD: i32 = 12;
 
@@ -119,41 +120,61 @@ impl Analyzer {
         let mut text = String::new();
         let champions = self.get_sorted_champions();
         for (champion_name, champion_info) in &champions {
-            let mut ally_count: i32 = 0;
-            let mut ally_score: f32 = 0.0;
-            for info in champion_info.get_win_rates_with_champions() {
-                if allies.contains(&info.0.as_str()) {
-                    ally_count += 1;
-                    ally_score += info.1.get_win_rate();
-                }
-            }
-            let mut enemy_count: i32 = 0;
-            let mut enemy_score: f32 = 0.0;
-            for info in champion_info.get_win_rates_vs_champions() {
-                if enemies.contains(&info.0.as_str()) {
-                    enemy_count += 1;
-                    enemy_score += info.1.get_win_rate();
-                }
-            }
-            text = text.add(
-                &format!("{}: ally strength {}, enemy weakness {}, summary chance {}",
+            let (matched_ally_count, ally_score, ally_breakdown_text) = Self::get_win_chance_summary(
+                champion_info.get_win_rates_with_champions(), &allies, 2
+            );
+            let (matched_enemy_count, enemy_score, enemy_breakdown_text) = Self::get_win_chance_summary(
+                champion_info.get_win_rates_vs_champions(), &enemies, 2
+            );
+            text.push_str(
+                format!("{}: ally strength {}, enemy weakness {}, summary chance {}",
                     champion_name,
-                    Self::format_score(ally_count, ally_score),
-                    Self::format_score(enemy_count, enemy_score),
-                    Self::format_score(ally_count + enemy_count, ally_score + enemy_score)
-                )
+                    Self::format_chance(matched_ally_count, ally_score),
+                    Self::format_chance(matched_enemy_count, enemy_score),
+                    Self::format_chance(
+                        matched_ally_count + matched_enemy_count,
+                        ally_score + enemy_score
+                    )
+                ).as_str()
             );
             text.push('\n');
+            text.push_str(INDENTATION_STRING);
+            text.push_str("Allies:\n");
+            text.push_str(ally_breakdown_text.as_str());
+            text.push_str(INDENTATION_STRING);
+            text.push_str("Enemies:\n");
+            text.push_str(enemy_breakdown_text.as_str());
         };
         return text;
     }
 
-    fn format_score(champion_count: i32, score: f32) -> String {
+    fn get_win_chance_summary(champion_infos: &HashMap<String, WinRateInfo>, champions: &Vec<&str>, indentation_level: i32)
+            -> (i32, f32, String) {
+        let mut matched_count: i32 = 0;
+        let mut combined_score: f32 = 0.0;
+        let mut breakdown_text = String::new();
+        for info in champion_infos {
+            if champions.contains(&info.0.as_str()) {
+                matched_count += 1;
+                combined_score += info.1.get_win_rate();
+                for _ in 0..indentation_level {
+                    breakdown_text.push_str(INDENTATION_STRING);
+                }
+                breakdown_text.push_str(info.0);
+                breakdown_text.push_str(" ");
+                breakdown_text.push_str(info.1.to_string().as_str());
+                breakdown_text.push('\n');
+            }
+        }
+        return (matched_count, combined_score, breakdown_text);
+    }
+
+    fn format_chance(champion_count: i32, combined_score: f32) -> String {
         if champion_count == 0 {
             return String::from("[?]")
         } else {
             let mut text = String::new();
-            text = text.add(&format_percent(score / (champion_count as f32)));
+            text = text.add(&format_percent(combined_score / (champion_count as f32)));
             text = text.add(" of ");
             text = text.add(&champion_count.to_string());
             return text;
@@ -191,7 +212,6 @@ pub fn analyze() {
         .expect("summoner-id is required");
     let args = CommandLineArguments::parse_from(std::env::args().skip(1));
     let mut analyzer = Analyzer::new(summoner_id);
-    println!("{}", args.days);
     analyzer.duration_limit = chrono::Duration::days(args.days);
     analyzer.analyze_files().unwrap();
 

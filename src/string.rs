@@ -25,6 +25,15 @@ pub fn format_ratio(a: i32, b: i32) -> String {
         return String::from("?");
     }
 }
+pub fn format_ratio_detailed(a: i32, b: i32) -> String {
+    let mut string = String::new();
+    string.push_str(a.to_string().as_str());
+    string.push_str(" of ");
+    string.push_str(b.to_string().as_str());
+    string.push_str(" → ");
+    string.push_str(format_ratio(a, b).as_str());
+    return string;
+}
 
 pub fn format_percent(a: f32) -> String {
     let percent = (a * 100.0) as i32;

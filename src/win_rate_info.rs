@@ -1,5 +1,5 @@
 use std::ops::Add;
-use crate::string::{format_percent, format_ratio};
+use crate::string::{ format_percent, format_ratio, format_ratio_detailed };
 
 const STATISTICAL_SIGNIFICANCE_THRESHOLD: i32 = 5;
 
@@ -71,8 +71,10 @@ impl WinRateInfo {
     pub fn get_count_of_matches(&self) -> i32 {
         return self.count_of_matches;
     }
+}
 
-    pub fn get_count_of_wins(&self) -> i32 {
-        return self.count_of_wins;
+impl ToString for WinRateInfo {
+    fn to_string(&self) -> String {
+        return format_ratio_detailed(self.count_of_wins, self.count_of_matches);
     }
 }

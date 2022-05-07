@@ -3,6 +3,8 @@ use std::env;
 mod store;
 mod analyze;
 mod string;
+mod win_rate_info;
+mod champion_info;
 
 pub fn main() {
     println!("STARTING...");

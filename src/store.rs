@@ -1,4 +1,5 @@
 use std::path::Path;
+use std::ops::Add;
 use serde_json;
 use riven::RiotApi;
 use riven::RiotApiConfig;
@@ -84,10 +85,13 @@ impl Reader {
     }
 }
 
+const RIOT_API_KEY_FILE_PATH: &str = "./riot-api-key.txt";
+
 pub fn store() {
     let runtime = tokio::runtime::Runtime::new().unwrap();
     runtime.block_on(async {
-        let api_key = std::fs::read_to_string("./riot-api-key.txt").unwrap();
+        let api_key = std::fs::read_to_string(RIOT_API_KEY_FILE_PATH)
+            .expect(String::from("Need file: ").add(RIOT_API_KEY_FILE_PATH).as_str());
         let mut reader = Reader::new(&api_key);
         reader.read().await;
     });

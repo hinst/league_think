@@ -1,7 +1,9 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use chrono::NaiveDateTime;
 use clap::StructOpt;
 use std::ops::Add;
+use fuzzy_matcher::FuzzyMatcher;
+use fuzzy_matcher::skim::SkimMatcherV2;
 use crate::champion_info::ChampionInfo;
 use crate::string::{ indent_string, format_percent, INDENTATION_STRING };
 use crate::win_rate_info::WinRateInfo;
@@ -148,8 +150,8 @@ impl Analyzer {
         return text;
     }
 
-    fn get_win_chance_summary(champion_infos: &HashMap<String, WinRateInfo>, champions: &Vec<&str>, indentation_level: i32)
-            -> (i32, f32, String) {
+    fn get_win_chance_summary(champion_infos: &HashMap<String, WinRateInfo>, champions: &Vec<&str>, 
+            indentation_level: i32) -> (i32, f32, String) {
         let mut matched_count: i32 = 0;
         let mut combined_score: f32 = 0.0;
         let mut breakdown_text = String::new();
@@ -179,6 +181,46 @@ impl Analyzer {
             text = text.add(&champion_count.to_string());
             return text;
         }
+    }
+
+    fn get_all_champion_names(&self) -> Vec<String> {
+        let mut name_set: HashSet<String> = HashSet::new();
+        for (champion_name, info) in &self.champion_infos {
+            name_set.insert(champion_name.clone());
+            for (champion_name, _) in info.get_win_rates_vs_champions() {
+                name_set.insert(champion_name.clone());
+            }
+            for (champion_name, _) in info.get_win_rates_with_champions() {
+                name_set.insert(champion_name.clone());
+            }
+        }
+        let mut names: Vec<String> = Vec::with_capacity(name_set.len());
+        for name in name_set {
+            names.push(name);
+        }
+        return names;
+    }
+
+    fn guess_champion_names(&self, names: Vec<&str>) -> Vec<String> {
+        let matcher = SkimMatcherV2::default();
+        let mut corrected_names: Vec<String> = Vec::new();
+        let champion_names = self.get_all_champion_names();
+        for name in &names {
+            let mut best_score = 0;
+            let mut best_match: Option<&String> = None;
+            for actual_name in &champion_names {
+                let score = matcher.fuzzy_match(actual_name, *name).unwrap();
+                if score > best_score {
+                    best_match = Some(actual_name);
+                    best_score = score;
+                }
+            }
+            match best_match {
+                Some(best_match) => corrected_names.push(best_match.clone()),
+                None => corrected_names.push(String::from(*name))
+            }
+        };
+        return corrected_names;
     }
 }
 

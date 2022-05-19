@@ -2,11 +2,10 @@ use std::collections::{HashMap, HashSet};
 use chrono::NaiveDateTime;
 use clap::StructOpt;
 use std::ops::Add;
-use fuzzy_matcher::FuzzyMatcher;
-use fuzzy_matcher::skim::SkimMatcherV2;
 use crate::champion_info::ChampionInfo;
 use crate::string::{ indent_string, format_percent, INDENTATION_STRING };
 use crate::win_rate_info::WinRateInfo;
+use edit_distance::edit_distance;
 
 const STATISTICAL_SATURATION_THRESHOLD: i32 = 12;
 
@@ -59,7 +58,7 @@ impl Analyzer {
                 latest_chronological_date = Some(moment);
             }
             latest_processed_date = Some(moment);
-            if i % 10 == 0 {
+            if i % 100 == 0 {
                 println!("Analyzing file {} -> {}...", i, moment);
             }
             self.add_match_history(&match_history);
@@ -208,17 +207,16 @@ impl Analyzer {
     }
 
     fn guess_champion_names(&self, names: Vec<&str>) -> Vec<String> {
-        let matcher = SkimMatcherV2::default();
         let mut corrected_names: Vec<String> = Vec::new();
         let champion_names = self.get_all_champion_names();
         for name in &names {
-            let mut best_score = 0;
+            let mut best_distance = std::usize::MAX;
             let mut best_match: Option<&String> = None;
             for actual_name in &champion_names {
-                let score = matcher.fuzzy_match(actual_name, *name).or(Some(0)).unwrap();
-                if score > best_score {
+                let distance = edit_distance(actual_name, *name);
+                if distance < best_distance {
                     best_match = Some(actual_name);
-                    best_score = score;
+                    best_distance = distance;
                 }
             }
             match best_match {
@@ -261,16 +259,17 @@ struct CommandLineArguments {
 }
 
 pub fn analyze() {
-    let summoner_id = std::fs::read_to_string("./summoner-id.txt")
-        .expect("summoner-id is required");
+    let summoner_id_file_path = String::from("./summoner-id.txt");
+    let summoner_id = std::fs::read_to_string(summoner_id_file_path.as_str())
+        .expect(format!("File {} is required", summoner_id_file_path).as_str());
     let args = CommandLineArguments::parse_from(std::env::args().skip(1));
     let mut analyzer = Analyzer::new(summoner_id);
     analyzer.duration_limit = chrono::Duration::days(args.days);
     analyzer.analyze_files().unwrap();
 
     if args.allies.len() > 0 || args.enemies.len() > 0 {
-        let allies: Vec<&str> = args.allies.split(',').collect();
-        let enemies: Vec<&str> = args.enemies.split(',').collect();
+        let allies: Vec<&str> = args.allies.split(',').filter(|s| s.len() > 0).collect();
+        let enemies: Vec<&str> = args.enemies.split(',').filter(|s| s.len() > 0).collect();
         println!("Champion chances:\n{}", analyzer.get_score_summary_text(allies, enemies));
     } else {
         println!("Champion summary:\n{}", analyzer.get_summary_text());

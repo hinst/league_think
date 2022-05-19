@@ -121,12 +121,18 @@ impl Analyzer {
     fn get_score_summary_text(&self, allies: Vec<&str>, enemies: Vec<&str>) -> String {
         let mut text = String::new();
         let champions = self.get_sorted_champions();
+
+        let allies = self.guess_champion_names(allies);
+        let enemies = self.guess_champion_names(enemies);
+        let allies_pointers: Vec<&str> = allies.iter().map(|s| s.as_str()).collect();
+        let enemies_pointers: Vec<&str> = enemies.iter().map(|s| s.as_str()).collect();
+
         for (champion_name, champion_info) in &champions {
             let (matched_ally_count, ally_score, ally_breakdown_text) = Self::get_win_chance_summary(
-                champion_info.get_win_rates_with_champions(), &allies, 2
+                champion_info.get_win_rates_with_champions(), &allies_pointers, 2
             );
             let (matched_enemy_count, enemy_score, enemy_breakdown_text) = Self::get_win_chance_summary(
-                champion_info.get_win_rates_vs_champions(), &enemies, 2
+                champion_info.get_win_rates_vs_champions(), &enemies_pointers, 2
             );
             text.push_str(
                 format!("{}: ally strength {}, enemy weakness {}, summary chance {}",
@@ -150,7 +156,7 @@ impl Analyzer {
         return text;
     }
 
-    fn get_win_chance_summary(champion_infos: &HashMap<String, WinRateInfo>, champions: &Vec<&str>, 
+    fn get_win_chance_summary(champion_infos: &HashMap<String, WinRateInfo>, champions: &Vec<&str>,
             indentation_level: i32) -> (i32, f32, String) {
         let mut matched_count: i32 = 0;
         let mut combined_score: f32 = 0.0;
@@ -209,14 +215,19 @@ impl Analyzer {
             let mut best_score = 0;
             let mut best_match: Option<&String> = None;
             for actual_name in &champion_names {
-                let score = matcher.fuzzy_match(actual_name, *name).unwrap();
+                let score = matcher.fuzzy_match(actual_name, *name).or(Some(0)).unwrap();
                 if score > best_score {
                     best_match = Some(actual_name);
                     best_score = score;
                 }
             }
             match best_match {
-                Some(best_match) => corrected_names.push(best_match.clone()),
+                Some(best_match) => {
+                    corrected_names.push(best_match.clone());
+                    if best_match != name {
+                        println!("Corrected champion name {} -> {}", name, best_match);
+                    }
+                },
                 None => corrected_names.push(String::from(*name))
             }
         };
